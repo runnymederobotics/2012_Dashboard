@@ -56,10 +56,8 @@ public final class AxisCamera
                     long start = System.currentTimeMillis();
                     BufferedImage image = axisCamera.getImage();
                     long captureTime = System.currentTimeMillis() - start;
-                    try {
+                    if(image != null) {
                         imageHandler.handleImage(image, captureTime);
-                    } catch(Exception e) {
-                        
                     }
                 } catch(Exception e) {
                     Dashboard1310.log("CameraThread exception: " + e);

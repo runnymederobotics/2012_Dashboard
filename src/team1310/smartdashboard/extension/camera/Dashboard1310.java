@@ -2,17 +2,17 @@ package team1310.smartdashboard.extension.camera;
 
 import com.googlecode.javacpp.Loader;
 import com.googlecode.javacv.cpp.opencv_core;
+import com.googlecode.javacv.cpp.opencv_core.CvBox2D;
 import com.googlecode.javacv.cpp.opencv_core.CvContour;
 import com.googlecode.javacv.cpp.opencv_core.CvMemStorage;
+import com.googlecode.javacv.cpp.opencv_core.CvPoint;
+import com.googlecode.javacv.cpp.opencv_core.CvRect;
 import com.googlecode.javacv.cpp.opencv_core.CvScalar;
 import com.googlecode.javacv.cpp.opencv_core.CvSeq;
 import com.googlecode.javacv.cpp.opencv_core.IplImage;
 import com.googlecode.javacv.cpp.opencv_imgproc;
 import edu.wpi.first.smartdashboard.gui.StaticWidget;
-import edu.wpi.first.smartdashboard.properties.ColorProperty;
-import edu.wpi.first.smartdashboard.properties.IntegerProperty;
-import edu.wpi.first.smartdashboard.properties.Property;
-import edu.wpi.first.smartdashboard.properties.StringProperty;
+import edu.wpi.first.smartdashboard.properties.*;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
@@ -48,7 +48,13 @@ public class Dashboard1310 extends StaticWidget {
     
     public final IntegerProperty threshold = new IntegerProperty(this, "Threshold", 125);
     public final ColorProperty lightColour = new ColorProperty(this, "Light Colour", Color.ORANGE);
-    public final IntegerProperty numFilters = new IntegerProperty(this, "Number of filters", 0);
+    public final IntegerProperty numFilters = new IntegerProperty(this, "Number of Filters", 0);
+    
+    public final IntegerProperty houghVotes = new IntegerProperty(this, "Hough Votes", 1);
+    public final IntegerProperty houghMinLineLength = new IntegerProperty(this, "Hough Min Line Length", 5);
+    public final IntegerProperty houghMaxLineLength = new IntegerProperty(this, "Hough Max Line Gap", 100);
+    public final DoubleProperty houghRho = new DoubleProperty(this, "Hough Rho", 1);
+    public final DoubleProperty houghTheta = new DoubleProperty(this, "Hough Theta", 0.01);
     
     @Override
     public void propertyChanged(Property property) {
@@ -88,8 +94,6 @@ public class Dashboard1310 extends StaticWidget {
                 for(ImageFilter imageFilter : imageFilters) {
                     try {
                         filteredCVImage = imageFilter.filter(filteredCVImage, cameraCVImage);
-                        //opencv_core.cvReleaseImage(filteredCVImage);
-                        //filteredCVImage = newFilteredImage;
                     } catch(Exception e) {
                         log("handleImage: exception in filter " + imageFilter.getClass().getName() + " : " + e);
                         return;
@@ -155,45 +159,99 @@ public class Dashboard1310 extends StaticWidget {
         @Override
         public IplImage filter(IplImage inputImage, IplImage originalImage) {
             IplImage ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, 1);
-            opencv_imgproc.cvThreshold(inputImage, ret, threshold.getValue().intValue(), 255, opencv_imgproc.CV_THRESH_BINARY);
+            opencv_imgproc.cvThreshold(inputImage, ret, threshold.getValue().intValue(), 255, opencv_imgproc.CV_THRESH_BINARY_INV);
             return ret;
         }
     }
     
     public class ErodeFilter implements ImageFilter {
+        int iterations;
+        
+        public ErodeFilter(int iterations) {
+            this.iterations = iterations;
+        }
+        
         @Override
         public IplImage filter(IplImage inputImage, IplImage originalImage) {
-            IplImage ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, 1);
-            opencv_imgproc.cvDilate(inputImage, ret, null, 1);
+            IplImage ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, iterations);
+            opencv_imgproc.cvErode(inputImage, ret, null, 1);
             return ret;
         }
     }
     
     public class DilateFilter implements ImageFilter {
+        int iterations;
+        
+        public DilateFilter(int iterations) {
+            this.iterations = iterations;
+        }
+        
         @Override
         public IplImage filter(IplImage inputImage, IplImage originalImage) {
-            IplImage ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, 1);
-            opencv_imgproc.cvErode(inputImage, ret, null, 1);
+            IplImage ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, iterations);
+            opencv_imgproc.cvDilate(inputImage, ret, null, 1);
             return ret;
         }
     }
     
     public class SkeletonFilter implements ImageFilter {
         CvMemStorage storage = CvMemStorage.create();
-        CvScalar contourColour;
-        
-        public SkeletonFilter() {
-            contourColour  = new CvScalar();
-            contourColour.green(255);
-        }
         
         @Override
         public IplImage filter(IplImage inputImage, IplImage originalImage) {
-            IplImage ret = inputImage.clone();
+            IplImage copy = inputImage.clone();
             CvSeq contour = new CvSeq(null);
-            opencv_imgproc.cvFindContours(ret, storage, contour, Loader.sizeof(CvContour.class), opencv_imgproc.CV_RETR_LIST, opencv_imgproc.CV_CHAIN_APPROX_SIMPLE);
-            opencv_core.cvDrawContours(originalImage, contour, contourColour, contourColour, 1, 1, 8);
-            return ret;
+            opencv_imgproc.cvFindContours(copy, storage, contour, Loader.sizeof(CvContour.class), opencv_imgproc.CV_RETR_EXTERNAL, opencv_imgproc.CV_CHAIN_APPROX_SIMPLE);
+            opencv_core.cvDrawContours(originalImage, contour, CvScalar.GREEN, CvScalar.GREEN, 1, 1, 8);
+
+            while(contour != null && !contour.isNull()) {
+                CvRect boundingBox = opencv_imgproc.cvBoundingRect(contour, 0);
+                opencv_core.cvRectangleR(originalImage, boundingBox, CvScalar.BLUE, opencv_core.CV_FILLED, 8, 0);
+                contour = contour.h_next();
+            }
+            return inputImage;
+        }
+    }
+    
+    public class MorphologicalSkeletonFilter implements ImageFilter {
+        @Override
+        public IplImage filter(IplImage inputImage, IplImage originalImage) {
+            IplImage skel = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, 1);
+            opencv_core.cvSet1D(skel, 0, opencv_core.cvScalar(0, 0, 0, 0));
+            IplImage eroded = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, 1);
+            IplImage temp = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, 1);
+            
+            boolean done;
+            do {
+                opencv_imgproc.cvErode(inputImage, eroded, null, 1);
+                opencv_imgproc.cvDilate(eroded, temp, null, 1);
+                opencv_core.cvSub(inputImage, temp, temp, null);
+                opencv_core.cvOr(skel, temp, skel, null);
+                inputImage.copyFrom(eroded.getBufferedImage());
+                
+                double normal = opencv_core.cvNorm(inputImage);
+                done = normal == 0;
+            } while(!done);
+
+            return skel;
+        }
+    }
+    
+    public class HoughFilter implements ImageFilter {
+        CvMemStorage storage = CvMemStorage.create();
+        
+        @Override
+        public IplImage filter(IplImage inputImage, IplImage originalImage) {
+            CvSeq lines = opencv_imgproc.cvHoughLines2(inputImage, storage, opencv_imgproc.CV_HOUGH_PROBABILISTIC, houghRho.getValue(), houghTheta.getValue(), houghVotes.getValue(), houghMinLineLength.getValue(), houghMaxLineLength.getValue());
+            //log("hough: got " + Integer.toString(lines.total()));
+            for(int i = 0; i < lines.total(); ++i) {
+                CvPoint points = new CvPoint(opencv_core.cvGetSeqElem(lines, i));
+                CvPoint lineStart = points.position(0);
+                CvPoint lineEnd = points.position(2);
+                opencv_core.cvLine(originalImage, lineStart, lineEnd, CvScalar.BLUE, 2, 8, 0);
+                //log("hough: line from " + Integer.toString(lineStart.x()) + " " + Integer.toString(lineStart.y()) + " to " + Integer.toString(lineEnd.x()) + " " + Integer.toString(lineEnd.y()));
+            }
+            return inputImage;
         }
     }
     
@@ -221,7 +279,11 @@ public class Dashboard1310 extends StaticWidget {
             cameraHandler.addFilter(new ThresholdFilter());
             //cameraHandler.addFilter(new ErodeFilter());
             //cameraHandler.addFilter(new DilateFilter());
+            //cameraHandler.addFilter(new MorphologicalSkeletonFilter());
             cameraHandler.addFilter(new SkeletonFilter());
+            //cameraHandler.addFilter(new MorphologicalSkeletonFilter());
+            //cameraHandler.addFilter(new ErodeFilter(1));
+            //cameraHandler.addFilter(new HoughFilter());
             
             cameraThread = new CameraThread(new AxisCamera("10.13.10.20", 320, 240), cameraHandler);
             cameraThread.start();
