@@ -55,9 +55,10 @@ public class Dashboard1310 extends StaticWidget {
     public final IntegerProperty houghMaxLineLength = new IntegerProperty(this, "Hough Max Line Gap", 100);
     public final DoubleProperty houghRho = new DoubleProperty(this, "Hough Rho", 1);
     public final DoubleProperty houghTheta = new DoubleProperty(this, "Hough Theta", 0.01);
+    public final DoubleProperty slopeThreshold = new DoubleProperty(this, "Slope Threshold", 0.1);
     
     @Override
-    public void propertyChanged(Property property) {
+    public void propertyChanged(Property property) {        
         if(property == width || property == height) {
             try {
                 cameraThread.setResolution(width.getValue().intValue(), height.getValue().intValue());
@@ -202,11 +203,81 @@ public class Dashboard1310 extends StaticWidget {
             IplImage copy = inputImage.clone();
             CvSeq contour = new CvSeq(null);
             opencv_imgproc.cvFindContours(copy, storage, contour, Loader.sizeof(CvContour.class), opencv_imgproc.CV_RETR_EXTERNAL, opencv_imgproc.CV_CHAIN_APPROX_SIMPLE);
-            opencv_core.cvDrawContours(originalImage, contour, CvScalar.GREEN, CvScalar.GREEN, 1, 1, 8);
+            //opencv_core.cvDrawContours(originalImage, contour, CvScalar.GREEN, CvScalar.GREEN, 1, 1, 8);
 
             while(contour != null && !contour.isNull()) {
                 CvRect boundingBox = opencv_imgproc.cvBoundingRect(contour, 0);
-                opencv_core.cvRectangleR(originalImage, boundingBox, CvScalar.BLUE, opencv_core.CV_FILLED, 8, 0);
+                //opencv_core.cvRectangleR(originalImage, boundingBox, CvScalar.BLUE, opencv_core.CV_FILLED, 8, 0);
+                
+                CvPoint bbCentre = new CvPoint(boundingBox.x() + boundingBox.width() / 2, boundingBox.y() + boundingBox.height() / 2);
+                CvPoint minXMinY = new CvPoint(0, 0);
+                int distMinMin = 0;
+                CvPoint minXMaxY = new CvPoint(0, 0);
+                int distMinMax = 0;
+                CvPoint maxXMinY = new CvPoint(0, 0);
+                int distMaxMin = 0;
+                CvPoint maxXMaxY = new CvPoint(0, 0);
+                int distMaxMax = 0;
+                
+                for(int i = 0; i < contour.total(); ++i) {
+                    CvPoint thisPoint = new CvPoint(opencv_core.cvGetSeqElem(contour, i));
+                    int transformedX = thisPoint.x() - bbCentre.x();
+                    int transformedY = thisPoint.y() - bbCentre.y();
+                    int dist = transformedX * transformedX + transformedY * transformedY;
+
+                    if(transformedX < 0) {
+                        if(transformedY < 0) {
+                            if(dist >= distMinMin) {
+                                minXMinY = thisPoint;
+                                distMinMin = dist;
+                            }
+                        } else {
+                            if(dist >= distMinMax) {
+                                minXMaxY = thisPoint;
+                                distMinMax = dist;
+                            }
+                        }
+                    } else {
+                        if(transformedY < 0) {
+                            if(dist >= distMaxMin) {
+                                maxXMinY = thisPoint;
+                                distMaxMin = dist;
+                            }
+                        } else {
+                            if(dist >= distMaxMax) {
+                                maxXMaxY = thisPoint;
+                                distMaxMax = dist;
+                            }
+                        }
+                    }
+                }
+                
+                float yDiff = minXMinY.y() - minXMaxY.y();
+                float xDiff = minXMinY.x() - minXMaxY.x();
+                float slopeLeft = xDiff > 0 ? yDiff / xDiff : 0.0f;
+                yDiff = maxXMinY.y() - maxXMaxY.y();
+                xDiff = minXMinY.x() - minXMaxY.x();
+                float slopeRight = xDiff > 0 ? yDiff / xDiff : 0.0f;
+                
+                CvScalar lineColour = opencv_core.CvScalar.RED;
+                float slopeDiff = Math.abs(slopeRight - slopeLeft);
+                int lineThickness = 1;
+                
+                if(slopeDiff < slopeThreshold.getValue()) {
+                    lineColour = opencv_core.CvScalar.BLUE;
+                    lineThickness = 2;
+                }
+                
+                opencv_core.cvDrawLine(originalImage, minXMinY, minXMaxY, lineColour, lineThickness, 8, 0);
+                opencv_core.cvDrawLine(originalImage, minXMaxY, maxXMaxY, lineColour, lineThickness, 8, 0);
+                opencv_core.cvDrawLine(originalImage, maxXMaxY, maxXMinY, lineColour, lineThickness, 8, 0);
+                opencv_core.cvDrawLine(originalImage, maxXMinY, minXMinY, lineColour, lineThickness, 8, 0);
+                
+                opencv_core.cvLine(originalImage, minXMinY, minXMinY, opencv_core.CvScalar.YELLOW, 4, 8, 0);
+                opencv_core.cvLine(originalImage, minXMaxY, minXMaxY, opencv_core.CvScalar.WHITE, 4, 8, 0);
+                opencv_core.cvLine(originalImage, maxXMaxY, maxXMaxY, opencv_core.CvScalar.CYAN, 4, 8, 0);
+                opencv_core.cvLine(originalImage, maxXMinY, maxXMinY, opencv_core.CvScalar.GRAY, 4, 8, 0);
+                
                 contour = contour.h_next();
             }
             return inputImage;
