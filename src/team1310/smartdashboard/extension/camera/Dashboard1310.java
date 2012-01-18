@@ -13,6 +13,7 @@ import com.googlecode.javacv.cpp.opencv_core.IplImage;
 import com.googlecode.javacv.cpp.opencv_imgproc;
 import edu.wpi.first.smartdashboard.gui.StaticWidget;
 import edu.wpi.first.smartdashboard.properties.*;
+import edu.wpi.first.wpilibj.networking.NetworkTable;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
@@ -41,6 +42,7 @@ public class Dashboard1310 extends StaticWidget {
     private JTable statsTable;
     private Long cameraCaptureTime = new Long(0);
     private Long imageProcessTime = new Long(0);
+    private Long maxImageProcessTime = new Long(0);
     
     public final IntegerProperty width = new IntegerProperty(this, "Width", 320);
     public final IntegerProperty height = new IntegerProperty(this, "Height", 240);
@@ -56,6 +58,10 @@ public class Dashboard1310 extends StaticWidget {
     public final DoubleProperty houghRho = new DoubleProperty(this, "Hough Rho", 1);
     public final DoubleProperty houghTheta = new DoubleProperty(this, "Hough Theta", 0.01);
     public final DoubleProperty slopeThreshold = new DoubleProperty(this, "Slope Threshold", 0.1);
+    public final IntegerProperty minAreaThreshold = new IntegerProperty(this, "Min Area Threshold", 20);
+    public final IntegerProperty maxAreaThreshold = new IntegerProperty(this, "Max Area Threshold", 1000000);
+    
+    //NetworkTable networkTable;
     
     @Override
     public void propertyChanged(Property property) {        
@@ -82,10 +88,12 @@ public class Dashboard1310 extends StaticWidget {
         
         IplImage cameraCVImage = null;
         IplImage filteredCVImage = null;
+        int counter = 0;
         
         @Override
         public void handleImage(BufferedImage image, long captureTime) {
             long start;
+            counter += 1;
             synchronized(cameraLock) {
                 start = System.currentTimeMillis();
                 filteredCVImage = IplImage.createFrom(image);
@@ -109,6 +117,8 @@ public class Dashboard1310 extends StaticWidget {
             }
             repaint();
             imageProcessTime = System.currentTimeMillis() - start;
+            if(imageProcessTime.longValue() > maxImageProcessTime.longValue())
+                maxImageProcessTime = imageProcessTime.longValue();
             cameraCaptureTime = captureTime;
         }
         
@@ -124,9 +134,13 @@ public class Dashboard1310 extends StaticWidget {
     }
     
     public class ColourDiffFilter implements ImageFilter {
+        IplImage ret;
+        
         @Override
         public IplImage filter(IplImage inputImage, IplImage originalImage) {
-            IplImage ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, 3);
+            if(ret == null || ret.width() != inputImage.width() || ret.height() != inputImage.height()) {
+                ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, 3);
+            }
             
             Color colour = lightColour.getValue();
             CvScalar scalar = new CvScalar();
@@ -139,33 +153,48 @@ public class Dashboard1310 extends StaticWidget {
     }
     
     public class ColourPlaneConverter implements ImageFilter {
+        IplImage ret;
+        
         @Override
         public IplImage filter(IplImage inputImage, IplImage originalImage) {
-            IplImage ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, 3);
+            if(ret == null || ret.width() != inputImage.width() || ret.height() != inputImage.height()) {
+                ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, 3);
+            }
+            ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, 3);
             opencv_imgproc.cvCvtColor(inputImage, ret, opencv_imgproc.CV_RGB2HSV);
             return ret;
         }
     }
     
     public class LuminanceExtractor implements ImageFilter {
+        IplImage ret;
+        
         @Override
         public IplImage filter(IplImage inputImage, IplImage originalImage) {
-            IplImage ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, 1);
+            if(ret == null || ret.width() != inputImage.width() || ret.height() != inputImage.height()) {
+                ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, 1);
+            }
+
             opencv_core.cvSplit(inputImage, null, null, ret, null);
             return ret;
         }
     }
     
     public class ThresholdFilter implements ImageFilter {
+        IplImage ret;
+        
         @Override
         public IplImage filter(IplImage inputImage, IplImage originalImage) {
-            IplImage ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, 1);
+            if(ret == null || ret.width() != inputImage.width() || ret.height() != inputImage.height()) {
+                ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, 1);
+            }
             opencv_imgproc.cvThreshold(inputImage, ret, threshold.getValue().intValue(), 255, opencv_imgproc.CV_THRESH_BINARY_INV);
             return ret;
         }
     }
     
     public class ErodeFilter implements ImageFilter {
+        IplImage ret;
         int iterations;
         
         public ErodeFilter(int iterations) {
@@ -174,13 +203,16 @@ public class Dashboard1310 extends StaticWidget {
         
         @Override
         public IplImage filter(IplImage inputImage, IplImage originalImage) {
-            IplImage ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, iterations);
+            if(ret == null || ret.width() != inputImage.width() || ret.height() != inputImage.height()) {
+                ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, iterations);
+            }
             opencv_imgproc.cvErode(inputImage, ret, null, 1);
             return ret;
         }
     }
     
     public class DilateFilter implements ImageFilter {
+        IplImage ret;
         int iterations;
         
         public DilateFilter(int iterations) {
@@ -189,7 +221,9 @@ public class Dashboard1310 extends StaticWidget {
         
         @Override
         public IplImage filter(IplImage inputImage, IplImage originalImage) {
-            IplImage ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, iterations);
+            if(ret == null || ret.width() != inputImage.width() || ret.height() != inputImage.height()) {
+                ret = IplImage.create(inputImage.cvSize(), opencv_core.IPL_DEPTH_8U, iterations);
+            }
             opencv_imgproc.cvDilate(inputImage, ret, null, 1);
             return ret;
         }
@@ -205,10 +239,15 @@ public class Dashboard1310 extends StaticWidget {
             opencv_imgproc.cvFindContours(copy, storage, contour, Loader.sizeof(CvContour.class), opencv_imgproc.CV_RETR_EXTERNAL, opencv_imgproc.CV_CHAIN_APPROX_SIMPLE);
             //opencv_core.cvDrawContours(originalImage, contour, CvScalar.GREEN, CvScalar.GREEN, 1, 1, 8);
 
-            while(contour != null && !contour.isNull()) {
+            CvRect highestTarget = null;
+            
+            for(; contour != null && !contour.isNull(); contour = contour.h_next()) {
                 CvRect boundingBox = opencv_imgproc.cvBoundingRect(contour, 0);
-                //opencv_core.cvRectangleR(originalImage, boundingBox, CvScalar.BLUE, opencv_core.CV_FILLED, 8, 0);
-                
+                int area = boundingBox.height() * boundingBox.width();
+                if(area < minAreaThreshold.getValue() || area > maxAreaThreshold.getValue()) {
+                    continue;
+                }
+
                 CvPoint bbCentre = new CvPoint(boundingBox.x() + boundingBox.width() / 2, boundingBox.y() + boundingBox.height() / 2);
                 CvPoint minXMinY = new CvPoint(0, 0);
                 int distMinMin = 0;
@@ -252,6 +291,12 @@ public class Dashboard1310 extends StaticWidget {
                     }
                 }
                 
+                if(minXMinY.x() == 0 || minXMinY.y() == 0
+                        || minXMaxY.x() == 0 || minXMaxY.y() == 0
+                        || maxXMinY.x() == 0 || maxXMinY.y() == 0
+                        || maxXMaxY.x() == 0 || maxXMaxY.y() == 0)
+                    continue;
+                
                 float yDiff = minXMinY.y() - minXMaxY.y();
                 float xDiff = minXMinY.x() - minXMaxY.x();
                 float slopeLeft = xDiff > 0 ? yDiff / xDiff : 0.0f;
@@ -259,27 +304,28 @@ public class Dashboard1310 extends StaticWidget {
                 xDiff = minXMinY.x() - minXMaxY.x();
                 float slopeRight = xDiff > 0 ? yDiff / xDiff : 0.0f;
                 
-                CvScalar lineColour = opencv_core.CvScalar.RED;
                 float slopeDiff = Math.abs(slopeRight - slopeLeft);
-                int lineThickness = 1;
                 
                 if(slopeDiff < slopeThreshold.getValue()) {
-                    lineColour = opencv_core.CvScalar.BLUE;
-                    lineThickness = 2;
+                    if(highestTarget == null || boundingBox.y() < highestTarget.y()) {
+                        highestTarget = boundingBox;
+                    }
+                    opencv_core.cvDrawLine(originalImage, minXMinY, minXMaxY, opencv_core.CvScalar.BLUE, 2, 8, 0);
+                    opencv_core.cvDrawLine(originalImage, minXMaxY, maxXMaxY, opencv_core.CvScalar.BLUE, 2, 8, 0);
+                    opencv_core.cvDrawLine(originalImage, maxXMaxY, maxXMinY, opencv_core.CvScalar.BLUE, 2, 8, 0);
+                    opencv_core.cvDrawLine(originalImage, maxXMinY, minXMinY, opencv_core.CvScalar.BLUE, 2, 8, 0);
                 }
                 
-                opencv_core.cvDrawLine(originalImage, minXMinY, minXMaxY, lineColour, lineThickness, 8, 0);
-                opencv_core.cvDrawLine(originalImage, minXMaxY, maxXMaxY, lineColour, lineThickness, 8, 0);
-                opencv_core.cvDrawLine(originalImage, maxXMaxY, maxXMinY, lineColour, lineThickness, 8, 0);
-                opencv_core.cvDrawLine(originalImage, maxXMinY, minXMinY, lineColour, lineThickness, 8, 0);
-                
-                opencv_core.cvLine(originalImage, minXMinY, minXMinY, opencv_core.CvScalar.YELLOW, 4, 8, 0);
-                opencv_core.cvLine(originalImage, minXMaxY, minXMaxY, opencv_core.CvScalar.WHITE, 4, 8, 0);
-                opencv_core.cvLine(originalImage, maxXMaxY, maxXMaxY, opencv_core.CvScalar.CYAN, 4, 8, 0);
-                opencv_core.cvLine(originalImage, maxXMinY, maxXMinY, opencv_core.CvScalar.GRAY, 4, 8, 0);
-                
-                contour = contour.h_next();
+                //opencv_core.cvLine(originalImage, minXMinY, minXMinY, opencv_core.CvScalar.YELLOW, 4, 8, 0);
+                //opencv_core.cvLine(originalImage, minXMaxY, minXMaxY, opencv_core.CvScalar.WHITE, 4, 8, 0);
+                //opencv_core.cvLine(originalImage, maxXMaxY, maxXMaxY, opencv_core.CvScalar.CYAN, 4, 8, 0);
+                //opencv_core.cvLine(originalImage, maxXMinY, maxXMinY, opencv_core.CvScalar.GRAY, 4, 8, 0);
             }
+            
+            if(highestTarget != null) {
+                opencv_core.cvRectangleR(originalImage, highestTarget, CvScalar.GREEN, 6, 8, 0);
+            }
+            
             return inputImage;
         }
     }
@@ -340,6 +386,8 @@ public class Dashboard1310 extends StaticWidget {
     @Override
     public void init() {
         try {
+            //networkTable = NetworkTable.getTable("1310");
+            
             fstream = new FileWriter("C:\\out.txt");
             logFile = new BufferedWriter(fstream);
             
@@ -365,6 +413,7 @@ public class Dashboard1310 extends StaticWidget {
             model.addColumn("Value");
             model.addRow(new Object[]{"Camera Capture Time (ms)", cameraCaptureTime});
             model.addRow(new Object[]{"Image Process Time (ms)", imageProcessTime});
+            model.addRow(new Object[]{"Max Image Process Time (ms)", maxImageProcessTime});
             statsTable.setLocation(0, 240);
             add(statsTable);
             setPreferredSize(new Dimension(640, 300));
@@ -377,6 +426,7 @@ public class Dashboard1310 extends StaticWidget {
     protected void paintComponent(Graphics g) {
         statsTable.setValueAt(cameraCaptureTime, 0, 1);
         statsTable.setValueAt(imageProcessTime, 1, 1);
+        statsTable.setValueAt(maxImageProcessTime, 2, 1);
         synchronized(cameraLock) {
             if(cameraImage != null) {
                 g.drawImage(cameraImage, 0, 0, null);
