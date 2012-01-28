@@ -2,7 +2,6 @@ package team1310.smartdashboard.extension.camera;
 
 import com.googlecode.javacpp.Loader;
 import com.googlecode.javacv.cpp.opencv_core;
-import com.googlecode.javacv.cpp.opencv_core.CvBox2D;
 import com.googlecode.javacv.cpp.opencv_core.CvContour;
 import com.googlecode.javacv.cpp.opencv_core.CvMemStorage;
 import com.googlecode.javacv.cpp.opencv_core.CvPoint;
@@ -17,6 +16,7 @@ import edu.wpi.first.wpilibj.networking.NetworkTable;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
+import java.awt.Point;
 import java.awt.image.BufferedImage;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
@@ -39,10 +39,17 @@ public class Dashboard1310 extends StaticWidget {
     static private FileWriter fstream;
     static private BufferedWriter logFile;
     
+    private NetworkTable networkTable;
+    private CameraInteractor cameraInteractor;
+    
     private JTable statsTable;
     private Long cameraCaptureTime = new Long(0);
     private Long imageProcessTime = new Long(0);
     private Long maxImageProcessTime = new Long(0);
+
+    private Boolean foundTarget = new Boolean(false);
+    private Double targetAngle = new Double(0);
+    private Double targetDistance = new Double(0);
     
     public final IntegerProperty width = new IntegerProperty(this, "Width", 320);
     public final IntegerProperty height = new IntegerProperty(this, "Height", 240);
@@ -60,8 +67,73 @@ public class Dashboard1310 extends StaticWidget {
     public final DoubleProperty slopeThreshold = new DoubleProperty(this, "Slope Threshold", 0.1);
     public final IntegerProperty minAreaThreshold = new IntegerProperty(this, "Min Area Threshold", 20);
     public final IntegerProperty maxAreaThreshold = new IntegerProperty(this, "Max Area Threshold", 1000000);
-    
-    //NetworkTable networkTable;
+    public final DoubleProperty cornerAngleThreshold = new DoubleProperty(this, "Corner Angle Threshold", 10);
+
+    public class CameraInteractor {
+        int sequenceNumber = 0;
+        
+        NetworkTable cameraNetworkTable;
+        
+        CameraInteractor() {
+            cameraNetworkTable = NetworkTable.getTable("Camera1310");
+        }
+        
+        public void targetFound(double xCentre, double yCentre, double objectHeight, double imageWidth, double imageHeight) {            
+            final double decimalXPos = (xCentre / imageWidth - 0.5) * 2; //-1(left) to 1
+            final double decimalYPos = (yCentre / imageHeight - 0.5) * 2; //-1(top) to 1
+
+            final double aspectRatio = imageWidth / imageHeight;
+            
+            final double xAngleOfView = 55.0; //Found in a pdf on axis.com
+            final double yAngleOfView = xAngleOfView / aspectRatio;
+            final double rlTargetHeight = 45.72; //18" * 2.54 = 45.72
+
+            final double xTheta = decimalXPos * xAngleOfView / 2;
+            final double yTheta = Math.abs(decimalYPos * yAngleOfView / 2);
+
+            final double yDistanceFromCentre = Math.abs(yCentre - imageHeight / 2);//imageHeight / 2 - yCentre;
+            final double zDistanceInPixels = yDistanceFromCentre / Math.tan(Math.toRadians(yTheta));
+
+            final double conversionFactor = rlTargetHeight / objectHeight; //cm/px
+
+            
+            final double zDistanceIRL = zDistanceInPixels * conversionFactor;
+            
+            foundTarget = true;
+            targetAngle = xTheta;
+            targetDistance = zDistanceIRL;
+            
+            final double targetHeight = 71; //inches
+            final double cameraHeight = 43.75; //inches
+            
+            //(targetHeight - cameraHeight) * 230 /
+            //targetDistance = (targetHeight - cameraHeight) * 230 / yDistanceFromCentre;
+
+            cameraNetworkTable.beginTransaction();
+            sequenceNumber += 1;
+            cameraNetworkTable.putInt("SequenceNumber", sequenceNumber);
+            cameraNetworkTable.putBoolean("FoundTarget", true);
+            cameraNetworkTable.putDouble("TargetAngle", xTheta);
+            cameraNetworkTable.putDouble("TargetDistance", zDistanceIRL);
+            cameraNetworkTable.endTransaction();
+            //cameraNetworkTable.
+        }
+        
+        public void targetNotFound() {
+            cameraNetworkTable.beginTransaction();
+            sequenceNumber += 1;
+            
+            foundTarget = false;
+            targetAngle = 0.0;
+            targetDistance = 0.0;
+            
+            cameraNetworkTable.putInt("SequenceNumber", sequenceNumber);
+            cameraNetworkTable.putBoolean("FoundTarget", false);
+            cameraNetworkTable.putDouble("TargetAngle", 0.0);
+            cameraNetworkTable.putDouble("TargetDistance", 0.0);
+            cameraNetworkTable.endTransaction();
+        }
+    }
     
     @Override
     public void propertyChanged(Property property) {        
@@ -229,15 +301,52 @@ public class Dashboard1310 extends StaticWidget {
         }
     }
     
+    public class Vector2D {
+        public double x;
+        public double y;
+
+        public Vector2D (double x, double y) {
+            this.x = x;
+            this.y = y;
+        }
+        
+        public double getLength() {
+            return Math.sqrt(x * x + y * y);
+        }
+        
+        public void toUnitVector() {
+            double length = getLength();
+            x /= length;
+            y /= length;
+        }
+        
+        public double getAngleTo(Vector2D other) {
+            double cosTheta = this.x * other.x + this.y * other.y;
+            
+            return Math.toDegrees(Math.acos(cosTheta));
+        }
+    }
+    
     public class SkeletonFilter implements ImageFilter {
         CvMemStorage storage = CvMemStorage.create();
+        int sequenceNumber = 0;
+        
+        double getAngle(CvPoint a, CvPoint b, CvPoint c) {
+            Vector2D vecBA = new Vector2D(a.x() - b.x(), a.y() - b.y());
+            Vector2D vecBC = new Vector2D(c.x() - b.x(), c.y() - b.y());
+            
+            vecBA.toUnitVector();
+            vecBC.toUnitVector();
+            
+            return vecBA.getAngleTo(vecBC);
+        }
         
         @Override
         public IplImage filter(IplImage inputImage, IplImage originalImage) {
             IplImage copy = inputImage.clone();
             CvSeq contour = new CvSeq(null);
             opencv_imgproc.cvFindContours(copy, storage, contour, Loader.sizeof(CvContour.class), opencv_imgproc.CV_RETR_EXTERNAL, opencv_imgproc.CV_CHAIN_APPROX_SIMPLE);
-            //opencv_core.cvDrawContours(originalImage, contour, CvScalar.GREEN, CvScalar.GREEN, 1, 1, 8);
+            opencv_core.cvDrawContours(originalImage, contour, CvScalar.GREEN, CvScalar.GREEN, 1, 1, 8);
 
             CvRect highestTarget = null;
             
@@ -297,7 +406,26 @@ public class Dashboard1310 extends StaticWidget {
                         || maxXMaxY.x() == 0 || maxXMaxY.y() == 0)
                     continue;
                 
-                float yDiff = minXMinY.y() - minXMaxY.y();
+                double topLeftAngle = Math.abs(getAngle(minXMaxY, minXMinY, maxXMinY));
+                double topRightAngle = Math.abs(getAngle(minXMinY, maxXMinY, maxXMaxY));
+                double bottomLeftAngle = Math.abs(getAngle(minXMinY, minXMaxY, maxXMaxY));
+                double bottomRightAngle = Math.abs(getAngle(minXMaxY, maxXMaxY, maxXMinY));
+                
+                if(Math.abs(topLeftAngle - 90) < cornerAngleThreshold.getValue() &&
+                        Math.abs(topRightAngle - 90) < cornerAngleThreshold.getValue() &&
+                        Math.abs(bottomLeftAngle - 90) < cornerAngleThreshold.getValue() &&
+                        Math.abs(bottomRightAngle - 90) < cornerAngleThreshold.getValue()) {
+                    
+                    if(highestTarget == null || boundingBox.y() < highestTarget.y()) {
+                        highestTarget = boundingBox;
+                    }
+                    opencv_core.cvDrawLine(originalImage, minXMinY, minXMaxY, opencv_core.CvScalar.BLUE, 2, 8, 0);
+                    opencv_core.cvDrawLine(originalImage, minXMaxY, maxXMaxY, opencv_core.CvScalar.BLUE, 2, 8, 0);
+                    opencv_core.cvDrawLine(originalImage, maxXMaxY, maxXMinY, opencv_core.CvScalar.BLUE, 2, 8, 0);
+                    opencv_core.cvDrawLine(originalImage, maxXMinY, minXMinY, opencv_core.CvScalar.BLUE, 2, 8, 0);
+                }
+                
+                /*float yDiff = minXMinY.y() - minXMaxY.y();
                 float xDiff = minXMinY.x() - minXMaxY.x();
                 float slopeLeft = xDiff > 0 ? yDiff / xDiff : 0.0f;
                 yDiff = maxXMinY.y() - maxXMaxY.y();
@@ -314,16 +442,21 @@ public class Dashboard1310 extends StaticWidget {
                     opencv_core.cvDrawLine(originalImage, minXMaxY, maxXMaxY, opencv_core.CvScalar.BLUE, 2, 8, 0);
                     opencv_core.cvDrawLine(originalImage, maxXMaxY, maxXMinY, opencv_core.CvScalar.BLUE, 2, 8, 0);
                     opencv_core.cvDrawLine(originalImage, maxXMinY, minXMinY, opencv_core.CvScalar.BLUE, 2, 8, 0);
-                }
+                }*/
                 
-                //opencv_core.cvLine(originalImage, minXMinY, minXMinY, opencv_core.CvScalar.YELLOW, 4, 8, 0);
-                //opencv_core.cvLine(originalImage, minXMaxY, minXMaxY, opencv_core.CvScalar.WHITE, 4, 8, 0);
-                //opencv_core.cvLine(originalImage, maxXMaxY, maxXMaxY, opencv_core.CvScalar.CYAN, 4, 8, 0);
-                //opencv_core.cvLine(originalImage, maxXMinY, maxXMinY, opencv_core.CvScalar.GRAY, 4, 8, 0);
+                opencv_core.cvLine(originalImage, minXMinY, minXMinY, opencv_core.CvScalar.YELLOW, 4, 8, 0);
+                opencv_core.cvLine(originalImage, minXMaxY, minXMaxY, opencv_core.CvScalar.WHITE, 4, 8, 0);
+                opencv_core.cvLine(originalImage, maxXMaxY, maxXMaxY, opencv_core.CvScalar.CYAN, 4, 8, 0);
+                opencv_core.cvLine(originalImage, maxXMinY, maxXMinY, opencv_core.CvScalar.GRAY, 4, 8, 0);
             }
             
             if(highestTarget != null) {
                 opencv_core.cvRectangleR(originalImage, highestTarget, CvScalar.GREEN, 6, 8, 0);
+                
+                //Make sure we are sending the camera interactor the centre of the bounding box and not the top left corner
+                cameraInteractor.targetFound(highestTarget.x() + highestTarget.width() / 2, highestTarget.y() + highestTarget.height() / 2, highestTarget.height(), originalImage.width(), originalImage.height());
+            } else {
+                cameraInteractor.targetNotFound();
             }
             
             return inputImage;
@@ -386,7 +519,9 @@ public class Dashboard1310 extends StaticWidget {
     @Override
     public void init() {
         try {
-            //networkTable = NetworkTable.getTable("1310");
+            NetworkTable.setTeam(1310);
+            networkTable = NetworkTable.getTable("1310");
+            cameraInteractor = new CameraInteractor();
             
             fstream = new FileWriter("C:\\out.txt");
             logFile = new BufferedWriter(fstream);
@@ -414,6 +549,9 @@ public class Dashboard1310 extends StaticWidget {
             model.addRow(new Object[]{"Camera Capture Time (ms)", cameraCaptureTime});
             model.addRow(new Object[]{"Image Process Time (ms)", imageProcessTime});
             model.addRow(new Object[]{"Max Image Process Time (ms)", maxImageProcessTime});
+            model.addRow(new Object[]{"Found Target", foundTarget});
+            model.addRow(new Object[]{"Target Angle", targetAngle});
+            model.addRow(new Object[]{"Target Distance", targetDistance});
             statsTable.setLocation(0, 240);
             add(statsTable);
             setPreferredSize(new Dimension(640, 300));
@@ -427,6 +565,10 @@ public class Dashboard1310 extends StaticWidget {
         statsTable.setValueAt(cameraCaptureTime, 0, 1);
         statsTable.setValueAt(imageProcessTime, 1, 1);
         statsTable.setValueAt(maxImageProcessTime, 2, 1);
+        statsTable.setValueAt(foundTarget, 3, 1);
+        statsTable.setValueAt(targetAngle, 4, 1);
+        statsTable.setValueAt(targetDistance, 5, 1);
+        
         synchronized(cameraLock) {
             if(cameraImage != null) {
                 g.drawImage(cameraImage, 0, 0, null);
