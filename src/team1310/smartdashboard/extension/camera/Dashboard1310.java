@@ -51,6 +51,7 @@ public class Dashboard1310 extends WPICameraExtension {
     private Double targetAngle = new Double(0);
     private Double targetDistance = new Double(0);
     private Double targetHeight = new Double(0);
+    private Integer targetNumber = new Integer(0);
     public final IntegerProperty width = new IntegerProperty(this, "Width", 320);
     public final IntegerProperty height = new IntegerProperty(this, "Height", 240);
     public final StringProperty host = new StringProperty(this, "Host", "10.13.10.20");
@@ -154,6 +155,7 @@ public class Dashboard1310 extends WPICameraExtension {
             targetAngle = 0.0;
             targetDistance = 0.0;
             targetHeight = 0.0;
+            targetNumber = 0;
             if(targetCount != 0) {
                 TargetInfo toReport = null;
                 
@@ -161,27 +163,39 @@ public class Dashboard1310 extends WPICameraExtension {
                 final double HIGH_TARGET_HEIGHT = 98;
                 
                 if(leftMostTarget.yInInches > LOW_TARGET_HEIGHT && leftMostTarget.yInInches < HIGH_TARGET_HEIGHT) {
-                    opencv_core.cvRectangleR(originalImage, leftMostTarget.boundingBox, CvScalar.CYAN, 6, 8, 0);
+                    opencv_core.cvRectangleR(originalImage, leftMostTarget.boundingBox, CvScalar.YELLOW, 6, 8, 0);
+                    toReport = leftMostTarget;
                 }
                 if(rightMostTarget.yInInches > LOW_TARGET_HEIGHT && rightMostTarget.yInInches < HIGH_TARGET_HEIGHT) {
-                    opencv_core.cvRectangleR(originalImage, rightMostTarget.boundingBox, CvScalar.MAGENTA, 6, 8, 0);
+                    opencv_core.cvRectangleR(originalImage, rightMostTarget.boundingBox, CvScalar.GREEN, 6, 8, 0);
+                    toReport = rightMostTarget;
                 }
                 if(highestTarget.yInInches > HIGH_TARGET_HEIGHT) {
                     //we see the top target
-                    opencv_core.cvRectangleR(originalImage, highestTarget.boundingBox, CvScalar.YELLOW, 6, 8, 0);
+                    opencv_core.cvRectangleR(originalImage, highestTarget.boundingBox, CvScalar.RED, 6, 8, 0);
                     toReport = highestTarget;
                 }
                 if(lowestTarget.yInInches < LOW_TARGET_HEIGHT) {
                     //we see the bottom target
-                    opencv_core.cvRectangleR(originalImage, lowestTarget.boundingBox, CvScalar.GREEN, 6, 8, 0);
+                    opencv_core.cvRectangleR(originalImage, lowestTarget.boundingBox, CvScalar.BLUE, 6, 8, 0);
                     toReport = lowestTarget;
                 }
                 
                 if(toReport != null) {
+                    opencv_core.cvRectangleR(originalImage, toReport.boundingBox, CvScalar.MAGENTA, opencv_core.CV_FILLED, 8, 0);
+                    
+                    foundTarget = true;
                     targetAngle = toReport.xTheta;
                     targetDistance = toReport.zDistanceIRL;
                     targetHeight = toReport.yInInches;
-                    foundTarget = true;
+
+                    if(toReport.yInInches < LOW_TARGET_HEIGHT) {
+                        targetNumber = 0;
+                    } else if(toReport.yInInches > HIGH_TARGET_HEIGHT) {
+                        targetNumber = 2;
+                    } else {
+                        targetNumber = 1;
+                    }
                 }
             }
             
@@ -192,6 +206,7 @@ public class Dashboard1310 extends WPICameraExtension {
             cameraNetworkTable.putDouble("TargetAngle", targetAngle);
             cameraNetworkTable.putDouble("TargetDistance", targetDistance);
             cameraNetworkTable.putDouble("TargetHeight", targetHeight);
+            cameraNetworkTable.putInt("TargetNumber", targetNumber);
             cameraNetworkTable.endTransaction();
         }
     }
@@ -613,6 +628,7 @@ public class Dashboard1310 extends WPICameraExtension {
             model.addRow(new Object[]{"Target Angle", targetAngle});
             model.addRow(new Object[]{"Target Distance", targetDistance});
             model.addRow(new Object[]{"Target Height", targetHeight});
+            model.addRow(new Object[]{"Target Number", targetNumber});
             statsTable.setLocation(0, 480);
             add(statsTable);
             setPreferredSize(new Dimension(640, 300));
@@ -630,6 +646,7 @@ public class Dashboard1310 extends WPICameraExtension {
         statsTable.setValueAt(targetAngle, 4, 1);
         statsTable.setValueAt(targetDistance, 5, 1);
         statsTable.setValueAt(targetHeight, 6, 1);
+        statsTable.setValueAt(targetNumber, 7, 1);
 
         synchronized (cameraLock) {
             if (cameraImage != null) {
