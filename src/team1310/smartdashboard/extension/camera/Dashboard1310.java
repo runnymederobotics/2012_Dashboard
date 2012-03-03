@@ -27,7 +27,10 @@ import java.util.Collection;
 import java.util.LinkedList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.swing.JOptionPane;
 import javax.swing.JTable;
+import javax.swing.event.TableModelEvent;
+import javax.swing.event.TableModelListener;
 import javax.swing.table.DefaultTableModel;
 import team1310.smartdashboard.extension.camera.AxisCamera.CameraThread;
 import team1310.smartdashboard.extension.camera.AxisCamera.ImageHandler;
@@ -42,8 +45,10 @@ public class Dashboard1310 extends WPICameraExtension {
     static private FileWriter fstream;
     static private BufferedWriter logFile;
     private NetworkTable networkTable;
+    //NetworkTable settingsNetworkTable;
     private CameraInteractor cameraInteractor;
     private JTable statsTable;
+    private JTable settingsTable;
     private Long cameraCaptureTime = new Long(0);
     private Long imageProcessTime = new Long(0);
     private Long maxImageProcessTime = new Long(0);
@@ -588,6 +593,25 @@ public class Dashboard1310 extends WPICameraExtension {
             Logger.getLogger(Dashboard1310.class.getName()).log(Level.SEVERE, null, e);
         }
     }
+    
+    class NetworkTableModelListener implements TableModelListener {
+        JTable table;
+        NetworkTable networkTable;
+        
+        public NetworkTableModelListener(JTable table, NetworkTable networkTable) {
+            this.table = table;
+            this.networkTable = networkTable;
+        }
+        
+        @Override
+        public void tableChanged(TableModelEvent e) {
+            if(e.getColumn() == 1 && e.getFirstRow() == e.getLastRow()) {
+                networkTable.putString(table.getValueAt(e.getFirstRow(), 0).toString(), table.getValueAt(e.getFirstRow(), 1).toString());
+                //JOptionPane.showMessageDialog(null, "put: " + table.getValueAt(e.getFirstRow(), 0).toString() + " " + table.getValueAt(e.getFirstRow(), 1).toString());
+            }
+        }
+        
+    }
 
     @Override
     public void init() {
@@ -631,6 +655,19 @@ public class Dashboard1310 extends WPICameraExtension {
             model.addRow(new Object[]{"Target Number", targetNumber});
             statsTable.setLocation(0, 480);
             add(statsTable);
+            
+            settingsNetworkTable = NetworkTable.getTable("Settings1310");
+            DefaultTableModel settingsModel = new DefaultTableModel();
+            settingsTable = new JTable(settingsModel);
+            settingsModel.addColumn("Setting");
+            settingsModel.addColumn("Value");
+            settingsModel.addRow(new Object[]{"ElevatorSpeed", 0.5});
+            settingsModel.addRow(new Object[]{"ReleaseDelay", 0.35});
+            settingsModel.addRow(new Object[]{"RecoverTime", 0.75});
+            TableModelListener settingsListener = new NetworkTableModelListener(settingsTable, settingsNetworkTable); 
+            settingsModel.addTableModelListener(settingsListener);
+            add(settingsTable);
+            
             setPreferredSize(new Dimension(640, 300));
         } catch (Exception e) {
             log("init(): " + e);
@@ -661,6 +698,7 @@ public class Dashboard1310 extends WPICameraExtension {
     
     long lastImageTime = 0;
     
+    @Override
     public edu.wpi.first.wpijavacv.WPIImage processImage(edu.wpi.first.wpijavacv.WPIColorImage rawImage) {
         if(cameraHandler != null) {
             long now = System.currentTimeMillis();
