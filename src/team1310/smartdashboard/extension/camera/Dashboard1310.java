@@ -45,7 +45,7 @@ public class Dashboard1310 extends WPICameraExtension {
     static private FileWriter fstream;
     static private BufferedWriter logFile;
     private NetworkTable networkTable;
-    //NetworkTable settingsNetworkTable;
+    NetworkTable settingsNetworkTable;
     private CameraInteractor cameraInteractor;
     private JTable statsTable;
     private JTable settingsTable;
@@ -73,9 +73,11 @@ public class Dashboard1310 extends WPICameraExtension {
     public final IntegerProperty maxAreaThreshold = new IntegerProperty(this, "Max Area Threshold", 1000000);
     public final DoubleProperty cornerAngleThreshold = new DoubleProperty(this, "Corner Angle Threshold", 10);
 
+    Integer sequenceNumber = new Integer(0);
+    
     public class CameraInteractor {
 
-        int sequenceNumber = 0;
+        
         int targetCount = 0;
         NetworkTable cameraNetworkTable;
         
@@ -244,12 +246,11 @@ public class Dashboard1310 extends WPICameraExtension {
         }
         IplImage cameraCVImage = null;
         IplImage filteredCVImage = null;
-        int counter = 0;
 
         @Override
         public void handleImage(BufferedImage image, long captureTime) {
             long start;
-            counter += 1;
+
             synchronized (cameraLock) {
                 start = System.currentTimeMillis();
                 filteredCVImage = IplImage.createFrom(image);
@@ -653,6 +654,7 @@ public class Dashboard1310 extends WPICameraExtension {
             model.addRow(new Object[]{"Target Distance", targetDistance});
             model.addRow(new Object[]{"Target Height", targetHeight});
             model.addRow(new Object[]{"Target Number", targetNumber});
+            model.addRow(new Object[]{"Sequence Number", sequenceNumber});
             statsTable.setLocation(0, 480);
             add(statsTable);
             
@@ -684,6 +686,7 @@ public class Dashboard1310 extends WPICameraExtension {
         statsTable.setValueAt(targetDistance, 5, 1);
         statsTable.setValueAt(targetHeight, 6, 1);
         statsTable.setValueAt(targetNumber, 7, 1);
+        statsTable.setValueAt(sequenceNumber, 8, 1);
 
         synchronized (cameraLock) {
             if (cameraImage != null) {
