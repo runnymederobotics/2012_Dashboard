@@ -536,6 +536,8 @@ public class Dashboard1310 extends WPICameraExtension {
             
             cameraInteractor.done(originalImage);
             
+            opencv_core.cvClearMemStorage(storage);
+            
             return inputImage;
         }
     }
