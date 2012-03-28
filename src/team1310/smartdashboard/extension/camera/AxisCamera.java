@@ -1,22 +1,33 @@
 package team1310.smartdashboard.extension.camera;
 
 import java.awt.image.BufferedImage;
+import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.net.URLConnection;
 import javax.imageio.ImageIO;
 
 public final class AxisCamera
 {
     String host;
     String resolution;
-    volatile URL staticURL;
-    volatile URL videoURL;
-    volatile InputStream imageStream;
+    URL staticURL;
+    URL videoURL;
+    InputStream imageStream;
+    OutputStream logStream;
+    
+    private void println(String s) {
+        try {
+            s += "\n";
+            logStream.write(s.getBytes(), 0, s.length());
+            logStream.flush();
+        } catch(Exception e) {
+        }
+    }
     
     public AxisCamera(String host, int width, int height) throws MalformedURLException {
         setResolution(width, height);
@@ -43,46 +54,80 @@ public final class AxisCamera
     public BufferedImage getImage() throws IOException {
         return ImageIO.read(staticURL);
     }
+
+    byte[] buffer = new byte[1024000];
     
     public BufferedImage getStreamImage() {
-        if(imageStream == null) {
+        while(imageStream == null) {
             try {
-                imageStream = videoURL.openStream();
+                println("connecting to the camera stream...");
+
+                URLConnection con = videoURL.openConnection();
+                con.setConnectTimeout(1000);
+                con.setReadTimeout(1000);
+                imageStream = new BufferedInputStream(con.getInputStream());
+
+                println("connected!");
             } catch(IOException e) {
-                return null;
+                println("getStreamImage exception while connecting: " + e);
+                try {
+                    Thread.sleep(1000);
+                } catch(InterruptedException ie) {
+                }
             }
         }
         
         BufferedImage img = null;
         
         try {
-            int numNewlines = 0; //for use in counting the lines in the header
-            String num = "";     //for use in parsing the size of the image
-            
-            //while the header is being read
+            int numNewlines = 0;
+            String num = "";
+
             while (numNewlines < 3) {
-                int ch = imageStream.read(); //get the next character in the stream
-                
-                if (ch == '\n') { //check for a newline
-                    numNewlines++;
-                } else if (ch >= '0' && ch <= '9') { //check to see if the character is a number
+                int ch = imageStream.read();
+                if (ch == '\n') {
+                    ++numNewlines;
+                } else if (ch >= '0' && ch <= '9') {
                     num += (char)ch;
                 }
             }
-            
-            //just checking to see if it found the image header. had one instance where it didn't find it but I'm unsure why.
-            if (!"".equals(num)) {
-                int size = Integer.parseInt(num); //the size of the image
-                byte[] bt = new byte[size];       //create a new byte array to hold the image
-                
-                imageStream.skip(2);                                  //skip two bytes after the header.
-                while (imageStream.available() < size) {}             //wait for enough bytes to come in.
-                imageStream.read(bt);                                 //put the image bytes into `bt`
-                if (imageStream.available() % size > 7)               //used to make sure the stream doesn't fall too far behind.
-                    img = ImageIO.read(new ByteArrayInputStream(bt)); //turn the byte array into an image and set it to `img`
-                imageStream.skip(2);                                  //skip two bytes after the image data.
+
+            if(num.length() == 0) {
+                throw new Exception("num.length == 0");
             }
-        } catch (IOException e) {
+
+            final int size = Integer.parseInt(num);
+            if(size > buffer.length) {
+                throw new Exception("image too big to fit into buffer. size: " + size);
+            }
+
+            int toSkip = 2;
+            while(toSkip > 0) {
+                toSkip -= imageStream.skip(toSkip);
+            }
+
+            int numRead = 0;
+            do {
+                final int got = imageStream.read(buffer, numRead, size - numRead);
+                if(got <= 0) {
+                    throw new Exception("got <= 0: " + got);
+                }
+                numRead += got;
+            } while(numRead < size);
+
+            img = ImageIO.read(new ByteArrayInputStream(buffer));
+
+            toSkip = 2;
+            while(toSkip > 0) {
+                toSkip -= imageStream.skip(toSkip);
+            }
+
+            int available = imageStream.available();
+            if(available > 0) {
+                println("lagging by " + available + " bytes");
+            }
+        } catch (Exception e) {
+            println("getStreamImage exception: " + e);
             try {
                 imageStream.close();
             } catch (IOException ex) {
@@ -91,6 +136,28 @@ public final class AxisCamera
         }
         return img;
     }
+    /*
+    public static void main(String[] args) {
+        int sequence = 0;
+        while(true) {
+            try {
+                AxisCamera axisCamera = new AxisCamera("10.13.10.20", 320, 240);
+                while(true) {
+                    long start = System.currentTimeMillis();
+                    BufferedImage image = axisCamera.getStreamImage();
+                    long captureTime = System.currentTimeMillis() - start;
+                    if(image != null) {
+                        System.out.println("got image in " + captureTime);
+                        //imageHandler.handleImage(image, captureTime);
+                    } else {
+                        System.out.println("null image!");
+                    }
+                }
+            } catch(Exception e) {
+                System.out.println("Exception: " + e);
+            }
+        }
+    }*/
     
     public interface ImageHandler {
         public abstract void handleImage(BufferedImage image, long captureTime);
@@ -110,9 +177,12 @@ public final class AxisCamera
             while(true) {
                 try {
                     long start = System.currentTimeMillis();
-                    BufferedImage image = axisCamera.getStreamImage();
+                    Dashboard1310.log("getting " + axisCamera.staticURL);
+                    BufferedImage image = axisCamera.getImage();
+                    Dashboard1310.log("got");
                     long captureTime = System.currentTimeMillis() - start;
                     if(image != null) {
+                        Dashboard1310.log("not null");
                         imageHandler.handleImage(image, captureTime);
                     }
                 } catch(Exception e) {

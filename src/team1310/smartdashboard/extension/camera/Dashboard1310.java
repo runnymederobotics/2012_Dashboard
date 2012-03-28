@@ -45,7 +45,7 @@ public class Dashboard1310 extends WPICameraExtension {
     static private FileWriter fstream;
     static private BufferedWriter logFile;
     private NetworkTable networkTable;
-    NetworkTable settingsNetworkTable;
+    //NetworkTable settingsNetworkTable;
     private CameraInteractor cameraInteractor;
     private JTable statsTable;
     private JTable settingsTable;
@@ -157,6 +157,8 @@ public class Dashboard1310 extends WPICameraExtension {
             }
         }
         
+        int counter = 0;
+        
         public void done(IplImage originalImage) {
             foundTarget = false;
             targetAngle = 0.0;
@@ -206,15 +208,20 @@ public class Dashboard1310 extends WPICameraExtension {
                 }
             }
             
-            cameraNetworkTable.beginTransaction();
-            sequenceNumber += 1;
-            cameraNetworkTable.putInt("SequenceNumber", sequenceNumber);
-            cameraNetworkTable.putBoolean("FoundTarget", foundTarget);
-            cameraNetworkTable.putDouble("TargetAngle", targetAngle);
-            cameraNetworkTable.putDouble("TargetDistance", targetDistance);
-            cameraNetworkTable.putDouble("TargetHeight", targetHeight);
-            cameraNetworkTable.putInt("TargetNumber", targetNumber);
-            cameraNetworkTable.endTransaction();
+            counter += 1;
+            if(counter % 2 == 0) {
+                cameraNetworkTable.beginTransaction();
+                sequenceNumber += 1;
+                cameraNetworkTable.putInt("SequenceNumber", sequenceNumber);
+                cameraNetworkTable.putBoolean("FoundTarget", foundTarget);
+                cameraNetworkTable.putDouble("TargetAngle", targetAngle);
+                cameraNetworkTable.putDouble("TargetDistance", targetDistance);
+                cameraNetworkTable.putDouble("TargetHeight", targetHeight);
+                cameraNetworkTable.putInt("TargetNumber", targetNumber);
+                cameraNetworkTable.endTransaction();
+            }
+            
+            
         }
     }
 
@@ -250,7 +257,6 @@ public class Dashboard1310 extends WPICameraExtension {
         @Override
         public void handleImage(BufferedImage image, long captureTime) {
             long start;
-
             synchronized (cameraLock) {
                 start = System.currentTimeMillis();
                 filteredCVImage = IplImage.createFrom(image);
@@ -535,6 +541,8 @@ public class Dashboard1310 extends WPICameraExtension {
             }
             
             cameraInteractor.done(originalImage);
+
+            opencv_core.cvClearMemStorage(storage);
             
             return inputImage;
         }
@@ -589,7 +597,6 @@ public class Dashboard1310 extends WPICameraExtension {
             logFile.write(str);
             logFile.write("\r\n");
             logFile.flush();
-            CvSeq seq = new CvSeq();
         } catch (IOException e) {
             Logger.getLogger(Dashboard1310.class.getName()).log(Level.SEVERE, null, e);
         }
@@ -658,7 +665,7 @@ public class Dashboard1310 extends WPICameraExtension {
             statsTable.setLocation(0, 480);
             add(statsTable);
             
-            settingsNetworkTable = NetworkTable.getTable("Settings1310");
+            /*settingsNetworkTable = NetworkTable.getTable("Settings1310");
             DefaultTableModel settingsModel = new DefaultTableModel();
             settingsTable = new JTable(settingsModel);
             settingsModel.addColumn("Setting");
@@ -668,7 +675,7 @@ public class Dashboard1310 extends WPICameraExtension {
             settingsModel.addRow(new Object[]{"RecoverTime", 0.75});
             TableModelListener settingsListener = new NetworkTableModelListener(settingsTable, settingsNetworkTable); 
             settingsModel.addTableModelListener(settingsListener);
-            add(settingsTable);
+            add(settingsTable);*/
             
             setPreferredSize(new Dimension(640, 300));
         } catch (Exception e) {
