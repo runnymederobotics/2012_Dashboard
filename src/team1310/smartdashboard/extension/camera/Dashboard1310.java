@@ -544,6 +544,8 @@ public class Dashboard1310 extends WPICameraExtension {
 
             opencv_core.cvClearMemStorage(storage);
             
+            opencv_core.cvClearMemStorage(storage);
+            
             return inputImage;
         }
     }
