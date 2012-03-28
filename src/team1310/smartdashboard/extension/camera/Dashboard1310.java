@@ -10,14 +10,12 @@ import com.googlecode.javacv.cpp.opencv_core.CvScalar;
 import com.googlecode.javacv.cpp.opencv_core.CvSeq;
 import com.googlecode.javacv.cpp.opencv_core.IplImage;
 import com.googlecode.javacv.cpp.opencv_imgproc;
-import edu.wpi.first.smartdashboard.camera.WPICameraExtension;
 import edu.wpi.first.smartdashboard.gui.StaticWidget;
 import edu.wpi.first.smartdashboard.properties.*;
 import edu.wpi.first.wpilibj.networking.NetworkTable;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
-import java.awt.Point;
 import java.awt.image.BufferedImage;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
@@ -27,7 +25,6 @@ import java.util.Collection;
 import java.util.LinkedList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.swing.JOptionPane;
 import javax.swing.JTable;
 import javax.swing.event.TableModelEvent;
 import javax.swing.event.TableModelListener;
@@ -35,7 +32,7 @@ import javax.swing.table.DefaultTableModel;
 import team1310.smartdashboard.extension.camera.AxisCamera.CameraThread;
 import team1310.smartdashboard.extension.camera.AxisCamera.ImageHandler;
 
-public class Dashboard1310 extends WPICameraExtension {
+public class Dashboard1310 extends StaticWidget {
 
     CameraHandler cameraHandler;
     private final Object cameraLock = new Object();
@@ -227,7 +224,7 @@ public class Dashboard1310 extends WPICameraExtension {
 
     @Override
     public void propertyChanged(Property property) {
-        super.propertyChanged(property);
+        //super.propertyChanged(property);
         if (property == width || property == height) {
             try {
                 if(cameraThread != null)
@@ -279,7 +276,7 @@ public class Dashboard1310 extends WPICameraExtension {
                 cameraImage = cameraCVImage.clone().getBufferedImage();
                 filteredCameraImage = filteredCVImage.getBufferedImage();
             }
-            //repaint();
+            repaint();
             imageProcessTime = System.currentTimeMillis() - start;
             if (imageProcessTime.longValue() > maxImageProcessTime.longValue()) {
                 maxImageProcessTime = imageProcessTime.longValue();
@@ -625,7 +622,7 @@ public class Dashboard1310 extends WPICameraExtension {
 
     @Override
     public void init() {
-        super.init();
+        //super.init();
         try {
             NetworkTable.setTeam(1310);
             networkTable = NetworkTable.getTable("1310");
@@ -647,8 +644,8 @@ public class Dashboard1310 extends WPICameraExtension {
             //cameraHandler.addFilter(new ErodeFilter(1));
             //cameraHandler.addFilter(new HoughFilter());
 
-            //cameraThread = new CameraThread(new AxisCamera("10.13.10.20", 320, 240), cameraHandler);
-            //cameraThread.start();
+            cameraThread = new CameraThread(new AxisCamera("10.13.10.20", 320, 240), cameraHandler);
+            cameraThread.start();
             //Camera2.imageHandler = cameraHandler;
 
             DefaultTableModel model = new DefaultTableModel();
@@ -710,7 +707,7 @@ public class Dashboard1310 extends WPICameraExtension {
     
     long lastImageTime = 0;
     
-    @Override
+    /*@Override
     public edu.wpi.first.wpijavacv.WPIImage processImage(edu.wpi.first.wpijavacv.WPIColorImage rawImage) {
         if(cameraHandler != null) {
             long now = System.currentTimeMillis();
@@ -718,5 +715,5 @@ public class Dashboard1310 extends WPICameraExtension {
             lastImageTime = now;
         }
         return rawImage;
-    }
+    }*/
 }

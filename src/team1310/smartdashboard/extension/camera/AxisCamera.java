@@ -1,11 +1,7 @@
 package team1310.smartdashboard.extension.camera;
 
 import java.awt.image.BufferedImage;
-import java.io.BufferedInputStream;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
@@ -18,7 +14,7 @@ public final class AxisCamera
     URL staticURL;
     URL videoURL;
     InputStream imageStream;
-    OutputStream logStream;
+    FileOutputStream logStream;
     
     private void println(String s) {
         try {
@@ -33,6 +29,10 @@ public final class AxisCamera
         setResolution(width, height);
         setHost(host);
         buildUrl();
+        try {
+            logStream = new FileOutputStream("C:/out.txt");
+        } catch(Exception e) {
+        }
     }
     
     public void setResolution(int width, int height) throws MalformedURLException {
@@ -136,28 +136,6 @@ public final class AxisCamera
         }
         return img;
     }
-    /*
-    public static void main(String[] args) {
-        int sequence = 0;
-        while(true) {
-            try {
-                AxisCamera axisCamera = new AxisCamera("10.13.10.20", 320, 240);
-                while(true) {
-                    long start = System.currentTimeMillis();
-                    BufferedImage image = axisCamera.getStreamImage();
-                    long captureTime = System.currentTimeMillis() - start;
-                    if(image != null) {
-                        System.out.println("got image in " + captureTime);
-                        //imageHandler.handleImage(image, captureTime);
-                    } else {
-                        System.out.println("null image!");
-                    }
-                }
-            } catch(Exception e) {
-                System.out.println("Exception: " + e);
-            }
-        }
-    }*/
     
     public interface ImageHandler {
         public abstract void handleImage(BufferedImage image, long captureTime);
@@ -177,16 +155,12 @@ public final class AxisCamera
             while(true) {
                 try {
                     long start = System.currentTimeMillis();
-                    Dashboard1310.log("getting " + axisCamera.staticURL);
-                    BufferedImage image = axisCamera.getImage();
-                    Dashboard1310.log("got");
+                    BufferedImage image = axisCamera.getStreamImage();
                     long captureTime = System.currentTimeMillis() - start;
                     if(image != null) {
-                        Dashboard1310.log("not null");
                         imageHandler.handleImage(image, captureTime);
                     }
                 } catch(Exception e) {
-                    Dashboard1310.log("CameraThread exception: " + e);
                 }
             }
         }
